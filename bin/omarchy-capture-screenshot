@@ -65,10 +65,22 @@ get_rectangles() {
   hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
-# Keep hyprpicker alive until after grim captures so the screenshot sees the
-# frozen overlay rather than live content shifting during teardown.
+# Keep hyprpicker alive during selection, but stop it before grim captures.
+# Otherwise the freeze/dim layer can be baked into the screenshot.
 cleanup_freeze() {
-  [[ -n $PID ]] && kill $PID 2>/dev/null
+  [[ -n $PID ]] && kill "$PID" 2>/dev/null
+}
+
+stop_freeze() {
+  [[ -n $PID ]] || return 0
+
+  kill "$PID" 2>/dev/null || true
+  wait "$PID" 2>/dev/null || true
+  PID=""
+
+  local delay="${OMARCHY_SCREENSHOT_CAPTURE_DELAY:-0.2}"
+  [[ $delay =~ ^[0-9]+([.][0-9]+)?$ ]] || delay=0.2
+  sleep "$delay"
 }
 trap cleanup_freeze EXIT
 
@@ -120,6 +132,8 @@ smart | *)
   fi
   ;;
 esac
+
+stop_freeze
 
 [[ -z $SELECTION ]] && exit 0
 
